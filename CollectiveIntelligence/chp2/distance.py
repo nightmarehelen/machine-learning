@@ -40,6 +40,9 @@ def pearson_distance(vector1, vector2):
 	exey=sum([vector1[x] for x in common]) * sum([vector2[x] for x in common])
 	varx = common_len * sum([pow(vector1[x],2) for x in common]) - pow(sum([vector1[x] for x in common]),2)
 	vary = common_len * sum([pow(vector2[x],2) for x in common]) - pow(sum([vector2[x] for x in common]),2)
+
+	if varx == 0 or vary == 0 :
+		return 0
 	return (exy - exey)/sqrt(varx*vary)
 
 #Jaccard相似系数计算相似度（Jaccard similarity coefficient）用于比较有限样本集之间的相似性与差异性。Jaccard系数值越大，样本相似度越高。
@@ -125,27 +128,82 @@ def sim_pearson(p1,p2):
 #获取其他人和person的相似度，然后按照相似度对评分进行加权平均，求出没看过的电影的加权评分，然后排序
 def getRecommendations(prefs,person,similarity=pearson_distance):
 	#获取person和其他人的相似度
-	similarity = get_person_similarity(prefs, person, similarity)
+	#similarity = get_person_similarity(prefs, person, similarity)
 	#print('\n****************************similarity***********************************')
 	#print(similarity)
 	#获取person没有看过的电影
-	unseen = getUnseen(prefs, person)
+	#unseen = getUnseen(prefs, person)
 	#print('\n****************************unseen***********************************')
 	#print(unseen)
 
-	recommend = {}
-	for movie in unseen:
-		sum_simi_multi_rating = 0
-		sum_simi = 0
-		for person2 in unseen[movie]:
-			sum_simi_multi_rating += similarity[person2]*unseen[movie][person2]
-			sum_simi +=similarity[person2]
-		recommend[movie] = sum_simi_multi_rating/sum_simi
+	total = {}
+	simSum = {}
+	for other in prefs:
+		if other == person:
+			continue
+		sim = similarity(prefs[person], prefs[other])
+		if sim<=0: 
+			continue
 
-	rankings=[(movie,rating) for movie,rating in recommend.items( )]
+		for item in prefs[other]:
+			if item not in prefs[person] or prefs[person][item]==0:
+				total.setdefault(item,0)
+				simSum.setdefault(item,0)
+				total[item] += sim * prefs[other][item]
+				simSum[item] += sim
+
+	rankings=[(sum/simSum[item], item) for item,sum in total.items( )]
 	rankings.sort()
 	rankings.reverse()
 	return rankings
+
+#转置
+def transformPrefs(matrix):
+	result = {}
+	for person in matrix:
+		for movie in matrix[person]:
+			result.setdefault(movie, {})
+			result[movie][person] = matrix[person][movie]
+	return result
+
+def calculateSimilarItems(prefs, n=10):
+	result = {}
+	itemPrefs = transformPrefs(prefs)
+	c = 0
+	for item in itemPrefs:
+		# Status updates for large datasets
+		c+=1
+		if c%100==0: print "%d / %d" % (c,len(itemPrefs))
+
+		# Find the most similar items to this one
+		scores=top_n_matches(itemPrefs,item,n=n,similarity=euclidean_distance)
+		result[item]=scores
+	return result
+
+def getRecommendedItems(prefs,itemMatch,user):
+	userRatings=prefs[user]
+	scores={}
+	totalSim={}
+	# Loop over items rated by this user
+	for (item,rating) in userRatings.items():
+		# Loop over items similar to this one
+		for (similarity,item2) in itemMatch[item]:
+			# Ignore if this user has already rated this item
+			if item2 in userRatings: 
+				continue
+			# Weighted sum of rating times similarity
+			scores.setdefault(item2,0)
+			scores[item2]+=similarity*rating
+			# Sum of all the similarities
+			totalSim.setdefault(item2,0)
+			totalSim[item2]+=similarity
+	# Divide each total score by total weighting to get an average
+	rankings=[(score/totalSim[item],item) for item,score in scores.items( )]
+	# Return the rankings from highest to lowest
+	rankings.sort( )
+	rankings.reverse( )
+	return rankings
+
 
 
 
